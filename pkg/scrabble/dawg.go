@@ -74,9 +74,9 @@ func (d *DAWG) insert(word string) {
 	curr.IsWord = true
 }
 
-// Find attempts to find a word in a DAWG, returning true if
+// IsWord attempts to find a word in a DAWG, returning true if
 // found or false if not.
-func (d *DAWG) Find(word string) bool {
+func (d *DAWG) IsWord(word string) bool {
 	var fn FindNavigator
 	fn.Init(word)
 	d.Navigate(&fn)

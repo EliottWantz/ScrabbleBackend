@@ -49,7 +49,13 @@ type FinalMove struct {
 }
 
 // Covers is a map of board coordinates to the letter covering the square
-type Covers map[Position]rune
+type Covers map[Position]Cover
+
+// If Letter is a blank "*", then actual is the real letter
+type Cover struct {
+	Letter rune
+	Actual rune
+}
 
 const BingoBonus = 50
 
@@ -125,9 +131,9 @@ func (move *TileMove) Init(b *Board, covers Covers, validateWords bool) {
 	word := b.WordFragment(move.Start, reverse)
 	// Next, traverse the covering line from top left to bottom right
 	for {
-		if letter, ok := covers[sq.Position]; ok {
+		if cover, ok := covers[sq.Position]; ok {
 			// This square is being covered by the tile move
-			word += string(letter)
+			word += string(cover.Actual)
 		} else {
 			// This square must be covered by a previously laid tile
 			if sq.Tile == nil {
@@ -224,7 +230,7 @@ func (move *TileMove) IsValid(game *Game) bool {
 	if move.Word == IllegalMoveWord || move.Word == "" {
 		return false
 	}
-	if !game.DAWG.Find(move.Word) {
+	if !game.DAWG.IsWord(move.Word) {
 		return false
 	}
 	// Check if the cross words are valid
@@ -232,7 +238,7 @@ func (move *TileMove) IsValid(game *Game) bool {
 		left, right := game.Board.CrossWordFragments(pos, !move.Horizontal)
 		if len(left) > 0 || len(right) > 0 {
 			// There is a cross word here: check it
-			if !game.DAWG.Find(left + string(coverLetter) + right) {
+			if !game.DAWG.IsWord(left + string(coverLetter.Actual) + right) {
 				return false
 			}
 		}
@@ -244,24 +250,22 @@ func (move *TileMove) IsValid(game *Game) bool {
 // to the board Squares. Move should be valid here
 func (move *TileMove) Apply(game *Game) error {
 	rack := game.PlayerToMove().Rack
-	for pos, coverLetter := range move.Covers {
+	for pos, cover := range move.Covers {
 		var (
 			tile *Tile
 			err  error
 		)
-		if coverLetter == unicode.ToUpper(coverLetter) {
-			// It is a blank tile
-			tile, err = rack.GetTile('*')
-		} else {
-			tile, err = rack.GetTile(coverLetter)
+
+		tile, err = rack.GetTile(cover.Letter)
+		if cover.Letter == '*' {
+			// It is a blank tile, put the letter to uppercase on the tile
+			tile.Letter = unicode.ToUpper(cover.Actual)
 		}
 
 		if err != nil {
 			// Should not happen
 			return err
 		}
-
-		tile.Letter = coverLetter
 
 		err = game.PlayTile(tile, pos, rack)
 		if err != nil {
@@ -308,7 +312,7 @@ func (move *TileMove) Score(state *GameState) int {
 	for {
 		s := state.Board.GetSquare(pos)
 		if cover, covered := move.Covers[pos]; covered {
-			sc := state.TileSet.Values[cover] * s.LetterMultiplier
+			sc := state.TileSet.Values[cover.Letter] * s.LetterMultiplier
 			score += sc
 			multiplier *= s.WordMultiplier
 			// Add cross score, if any
