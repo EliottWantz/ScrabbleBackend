@@ -44,17 +44,17 @@ func (r *Rack) Contains(letter rune) bool {
 	return r.Index(letter) >= 0
 }
 
-func (r *Rack) Remove(letter rune) bool {
+func (r *Rack) Remove(letter rune) error {
 	i := r.Index(letter)
 
 	if i == -1 {
-		return false
+		return ErrTileNotInRack
 	}
 	// Keep order when deleting so that when displayed on the frontend
 	// the user sees the same order as before
 	r.Tiles = append(r.Tiles[:i], r.Tiles[i+1:]...)
 
-	return true
+	return nil
 }
 
 func (r *Rack) GetTile(letter rune) (*Tile, error) {
