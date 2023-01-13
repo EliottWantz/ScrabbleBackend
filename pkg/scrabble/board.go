@@ -9,8 +9,8 @@ import (
 const BoardSize int = 15
 
 var (
-	ErrInvalidPosition                  = errors.New("position is out of bounds")
-	ErrInvalidPlacementOnNonEmptySquare = errors.New("cannot place a tile on a square that already has a tile on it")
+	ErrInvalidPosition = errors.New("position is out of bounds")
+	ErrExistingTile    = errors.New("a tile already exist on that square")
 )
 
 var (
@@ -146,31 +146,32 @@ func (b *Board) GetSquare(p Position) *Square {
 	return &b.Squares[p.Row][p.Col]
 }
 
-func (b *Board) PlaceTile(p Position, t *Tile) error {
+func (b *Board) PlaceTile(t *Tile, p Position) error {
+	if !p.InBounds() {
+		return ErrInvalidPosition
+	}
 	sq := b.GetSquare(p)
 
 	if sq.Tile != nil {
-		return ErrInvalidPlacementOnNonEmptySquare
+		return ErrExistingTile
 	}
-
 	sq.Tile = t
-
 	return nil
 }
 
 // TileFragment returns a list of the tiles that extend from the square
 // at given pos in the direction specified.
-func (board *Board) TileFragment(pos Position, direction Direction) []*Tile {
+func (b *Board) TileFragment(pos Position, dir Direction) []*Tile {
 	if !pos.InBounds() {
 		return nil
 	}
-	if direction < DirectionAbove || direction > DirectionBellow {
+	if dir < DirectionAbove || dir > DirectionBellow {
 		return nil
 	}
 
 	frag := make([]*Tile, 0, BoardSize-1)
 	for {
-		sq := board.Adjacents[pos.Row][pos.Col][direction]
+		sq := b.Adjacents[pos.Row][pos.Col][dir]
 		// If there is no adjacent square in direction, than can't be
 		// more letters in that direction
 		if sq == nil || sq.Tile == nil {
@@ -186,9 +187,9 @@ func (board *Board) TileFragment(pos Position, direction Direction) []*Tile {
 // WordFragment returns the word formed by the tile sequence emanating
 // from the given square in the indicated direction, not including the
 // square itself.
-func (board *Board) WordFragment(pos Position, direction Direction) string {
+func (b *Board) WordFragment(pos Position, direction Direction) string {
 	result := ""
-	frag := board.TileFragment(pos, direction)
+	frag := b.TileFragment(pos, direction)
 
 	if direction == DirectionLeft || direction == DirectionAbove {
 		// We need to reverse the order of the fragment
@@ -206,7 +207,7 @@ func (board *Board) WordFragment(pos Position, direction Direction) string {
 
 // CrossWordFragments returns the word fragments above and below (vertical),
 // or to the left and right (horizontal), of the given position on the board.
-func (board *Board) CrossWordFragments(pos Position, horizontal bool) (prev, after string) {
+func (b *Board) CrossWordFragments(pos Position, horizontal bool) (prev, after string) {
 	var direction int
 
 	if horizontal {
@@ -215,7 +216,7 @@ func (board *Board) CrossWordFragments(pos Position, horizontal bool) (prev, aft
 		direction = DirectionAbove
 	}
 
-	prev = board.WordFragment(pos, direction)
+	prev = b.WordFragment(pos, direction)
 
 	if horizontal {
 		direction = DirectionRight
@@ -223,15 +224,15 @@ func (board *Board) CrossWordFragments(pos Position, horizontal bool) (prev, aft
 		direction = DirectionBellow
 	}
 
-	after = board.WordFragment(pos, direction)
+	after = b.WordFragment(pos, direction)
 
 	return prev, after
 }
 
 // NumAdjacentTiles returns the number of tiles on the
 // Board that are adjacent to the given coordinate
-func (board *Board) NumAdjacentTiles(pos Position) int {
-	adj := &board.Adjacents[pos.Row][pos.Col]
+func (b *Board) NumAdjacentTiles(pos Position) int {
+	adj := &b.Adjacents[pos.Row][pos.Col]
 	count := 0
 	for _, sq := range adj {
 		if sq != nil && sq.Tile != nil {
@@ -245,7 +246,7 @@ func (board *Board) NumAdjacentTiles(pos Position) int {
 // the given tile, either horizontally or vertically. If there are no
 // crossings, returns false, 0. (Note that true, 0 is a valid return
 // value, if a crossing has only blank tiles.)
-func (board *Board) CrossScore(pos Position, horizontal bool) (hasCrossing bool, score int) {
+func (b *Board) CrossScore(pos Position, horizontal bool) (hasCrossing bool, score int) {
 	var direction int
 	if horizontal {
 		direction = DirectionLeft
@@ -253,7 +254,7 @@ func (board *Board) CrossScore(pos Position, horizontal bool) (hasCrossing bool,
 		direction = DirectionAbove
 	}
 
-	for _, tile := range board.TileFragment(pos, direction) {
+	for _, tile := range b.TileFragment(pos, direction) {
 		score += tile.Value
 		hasCrossing = true
 	}
@@ -264,7 +265,7 @@ func (board *Board) CrossScore(pos Position, horizontal bool) (hasCrossing bool,
 		direction = DirectionBellow
 	}
 
-	for _, tile := range board.TileFragment(pos, direction) {
+	for _, tile := range b.TileFragment(pos, direction) {
 		score += tile.Value
 		hasCrossing = true
 	}
@@ -318,16 +319,10 @@ func (s *Square) IsAnchor(b *Board) bool {
 }
 
 func (p Position) InBounds() bool {
-	if p.Row < 0 {
-		return false
-	}
-	if p.Row >= BoardSize {
-		return false
-	}
-	if p.Col < 0 {
-		return false
-	}
-	if p.Col >= BoardSize {
+	if p.Row < 0 ||
+		p.Row >= BoardSize ||
+		p.Col < 0 ||
+		p.Col >= BoardSize {
 		return false
 	}
 
