@@ -17,7 +17,7 @@ type Game struct {
 // that is needed for a robot player to decide on a move
 // in a Game.
 type GameState struct {
-	Dawg            *DAWG
+	DAWG            *DAWG
 	TileSet         *TileSet
 	Board           *Board
 	Rack            *Rack
@@ -140,7 +140,7 @@ func (g *Game) IsOver() bool {
 // game in a minimal manner so that a robot player can decide on a move
 func (g *Game) State() *GameState {
 	return &GameState{
-		Dawg:            g.DAWG,
+		DAWG:            g.DAWG,
 		TileSet:         g.TileSet,
 		Board:           g.Board,
 		Rack:            g.PlayerToMove().Rack,
@@ -149,7 +149,7 @@ func (g *Game) State() *GameState {
 }
 
 func (gs *GameState) GenerateMoves() []Move {
-	leftParts := FindLeftParts(gs.Dawg, gs.Rack.AsString())
+	leftParts := FindLeftParts(gs.DAWG, gs.Rack.AsString())
 
 	// results := make(chan []Move, BoardSize*2)
 	resultsChan := make(chan []Move, BoardSize*2)
@@ -178,5 +178,5 @@ func (gs *GameState) GenerateMovesOnAxis(index int, horizontal bool, leftParts [
 	var axis Axis
 	axis.Init(gs, index, horizontal)
 	// Generate a list of moves and send it on the result channel
-	resultsChan <- axis.GenerateMoves(len(gs.Rack.Tiles), leftParts)
+	resultsChan <- axis.GenerateMoves(leftParts)
 }
