@@ -3,6 +3,7 @@ package scrabble
 import (
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -244,11 +245,23 @@ func (move *TileMove) IsValid(game *Game) bool {
 func (move *TileMove) Apply(game *Game) error {
 	rack := game.PlayerToMove().Rack
 	for pos, coverLetter := range move.Covers {
-		tile, err := rack.GetTile(coverLetter)
+		var (
+			tile *Tile
+			err  error
+		)
+		if coverLetter == unicode.ToUpper(coverLetter) {
+			// It is a blank tile
+			tile, err = rack.GetTile('*')
+		} else {
+			tile, err = rack.GetTile(coverLetter)
+		}
+
 		if err != nil {
 			// Should not happen
 			return err
 		}
+
+		tile.Letter = coverLetter
 
 		err = game.PlayTile(tile, pos, rack)
 		if err != nil {
@@ -256,8 +269,8 @@ func (move *TileMove) Apply(game *Game) error {
 			return err
 		}
 
-		rack.Fill(game.Bag)
 	}
+	rack.Fill(game.Bag)
 	// Reset the counter of consecutive pass moves
 	game.NumPassMoves = 0
 	return nil
@@ -292,24 +305,19 @@ func (move *TileMove) Score(state *GameState) int {
 	}
 	// Then, progress from the top left to the bottom right
 	for {
-		sq := state.Board.GetSquare(pos)
-		if sq == nil {
-			break
-		}
+		s := state.Board.GetSquare(pos)
 		if cover, covered := move.Covers[pos]; covered {
-			// This square is covered by the move: apply its letter
-			// and word multipliers
-			thisScore := state.TileSet.Values[cover] * sq.LetterMultiplier
-			score += thisScore
-			multiplier *= sq.WordMultiplier
+			sc := state.TileSet.Values[cover] * s.LetterMultiplier
+			score += sc
+			multiplier *= s.WordMultiplier
 			// Add cross score, if any
 			hasCrossing, csc := state.Board.CrossScore(pos, !move.Horizontal)
 			if hasCrossing {
-				crossScore += (csc + thisScore) * sq.WordMultiplier
+				crossScore += (csc + sc) * s.WordMultiplier
 			}
 		} else {
 			// This square was already covered: add its letter score only
-			score += sq.Tile.Value
+			score += s.Tile.Value
 		}
 
 		if pos.Row >= move.End.Row && pos.Col >= move.End.Col {

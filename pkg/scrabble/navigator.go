@@ -2,6 +2,7 @@ package scrabble
 
 import (
 	"strings"
+	"unicode"
 )
 
 type Match int
@@ -328,18 +329,17 @@ func (ern *ExtendAfterNavigator) Accept(matched string, final bool, state *navSt
 	start := ern.index - len(runes)
 	// The original rack
 	rack := ern.axis.rackString
-	for i, meaning := range runes {
+	for i, l := range runes {
 		sq := ern.axis.squares[start+i]
 		if sq.Tile == nil {
-			letter := meaning
-			if strings.ContainsRune(rack, meaning) {
-				rack = strings.Replace(rack, string(meaning), "", 1)
+			if strings.ContainsRune(rack, l) {
+				rack = strings.Replace(rack, string(l), "", 1)
 			} else {
 				// Must be using a blank tile
-				letter = '*'
+				l = unicode.ToUpper(l)
 				rack = strings.Replace(rack, "*", "", 1)
 			}
-			covers[sq.Position] = letter
+			covers[sq.Position] = l
 		}
 	}
 	// No need to validate robot-generated tile moves

@@ -44,12 +44,16 @@ func (a *Axis) Init(gs *GameState, index int, horizontal bool) {
 		if b.Squares[BoardCenter][BoardCenter].Tile == nil {
 			// If no tile has yet been placed on the board,
 			// mark the center square of the center column as an anchor
-			isAnchor = (index == BoardCenter) && (i == BoardCenter) && !horizontal
+			isAnchor = (index == BoardCenter) && (i == BoardCenter)
 		} else {
 			isAnchor = s.IsAnchor(b)
 		}
 
 		if !isAnchor {
+			if strings.ContainsRune(a.rackString, '*') {
+				a.crossCheckLetters[i] = []rune{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'}
+				continue
+			}
 			// Empty square with no adjacent tiles: not an anchor,
 			// and we can place any letter from the rack here
 			a.crossCheckLetters[i] = a.rack
@@ -65,12 +69,16 @@ func (a *Axis) Init(gs *GameState, index int, horizontal bool) {
 			var crossCheckLetters []rune
 			if len(a.rack) != 0 {
 				playable := a.CrossCheck(s)
-				for _, l := range playable {
-					if !strings.ContainsRune(a.rackString, l) {
-						continue
-					}
+				if strings.ContainsRune(a.rackString, '*') {
+					crossCheckLetters = playable
+				} else {
+					for _, l := range playable {
+						if !strings.ContainsRune(a.rackString, l) {
+							continue
+						}
 
-					crossCheckLetters = append(crossCheckLetters, l)
+						crossCheckLetters = append(crossCheckLetters, l)
+					}
 				}
 			}
 
