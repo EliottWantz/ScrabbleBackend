@@ -300,6 +300,7 @@ func (move *TileMove) Score(state *GameState) int {
 	// Start with tiles above the top left
 	pos := move.Start
 
+	// Add value of tiles before
 	for _, tile := range state.Board.TileFragment(pos, direction) {
 		score += tile.Value
 	}

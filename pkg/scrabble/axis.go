@@ -163,7 +163,7 @@ func (a *Axis) extendBefore(anchor int) []Move {
 	var ebn ExtendBeforeNavigator
 	ebn.Init(left)
 	DAWG.NavigateResumable(&ebn)
-	if ebn.state == nil {
+	if ebn.navState == nil {
 		// No matching prefix found: there cannot be any
 		// valid completions of the left part that is already
 		// there.
@@ -173,7 +173,7 @@ func (a *Axis) extendBefore(anchor int) []Move {
 	// do an ExtendRight from that location, using the whole rack
 	var ean ExtendAfterNavigator
 	ean.Init(a, anchor, a.rackString)
-	DAWG.Resume(&ean, ebn.state, string(left))
+	DAWG.Resume(&ean, ebn.navState, string(left))
 	return ean.moves
 }
 
@@ -197,7 +197,7 @@ func (a *Axis) extendAfter(anchor int, maxLeft int, leftParts [][]*LeftPart) []M
 		for _, leftPart := range leftList {
 			var ean ExtendAfterNavigator
 			ean.Init(a, anchor, leftPart.rack)
-			DAWG.Resume(&ean, leftPart.state, leftPart.matched)
+			DAWG.Resume(&ean, leftPart.navState, leftPart.matched)
 			moves = append(moves, ean.moves...)
 		}
 	}

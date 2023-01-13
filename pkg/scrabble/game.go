@@ -149,7 +149,7 @@ func (g *Game) State() *GameState {
 }
 
 func (gs *GameState) GenerateMoves() []Move {
-	leftParts := FindLeftParts(gs.DAWG, gs.Rack.AsString())
+	leftParts := gs.DAWG.FindLeftParts(gs.Rack.AsString())
 
 	// results := make(chan []Move, BoardSize*2)
 	resultsChan := make(chan []Move, BoardSize*2)

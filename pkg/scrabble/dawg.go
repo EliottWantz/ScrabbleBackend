@@ -177,3 +177,12 @@ func (cc *crossCache) lookup(key string, fetchFunc func(string) []rune) []rune {
 	cc.cache[key] = runes
 	return runes
 }
+
+// FindLeftParts returns all left part permutations that can be generated
+// from the given rack, grouped by length
+func (dawg *DAWG) FindLeftParts(rack string) [][]*LeftPart {
+	var lpn LeftPermutationNavigator
+	lpn.Init(rack)
+	dawg.NavigateResumable(&lpn)
+	return lpn.leftParts
+}

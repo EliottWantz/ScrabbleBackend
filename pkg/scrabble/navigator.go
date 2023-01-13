@@ -10,8 +10,8 @@ type Match int
 // Matching constants
 const (
 	MatchNo        Match = 1
-	MatchBoardTile       = 2
-	MacthRackTile        = 3
+	MatchBoardTile Match = 2
+	MacthRackTile  Match = 3
 )
 
 // Make sure the navigator structs implements the Navigator interface
@@ -28,24 +28,19 @@ var (
 type Navigator interface {
 	IsAccepting() bool
 	Accepts(rune) bool
-	Accept(matched string, final bool, state *navState)
+	Accept(matched string, isWord bool, ns *navState)
 	PushEdge(rune) bool
 	PopEdge() bool
-	Done()
 }
 
-// ExtendBeforeNavigator is similar to FindNavigator, but instead of returning
-// only a bool result, it returns the full navigation state as it is when
-// the requested word prefix is found. This makes it possible to continue
-// the navigation later with further constraints.
 type ExtendBeforeNavigator struct {
 	prefix    []rune
 	lenPrefix int
 	index     int
-	// state is the result of the ExtendBeforeNavigator,
-	// which is used to continue navigation after a left part
+	// navState is the result of the ExtendBeforeNavigator,
+	// which is used to continue navigation after a previous part
 	// has been found on the board
-	state *navState
+	navState *navState
 }
 
 // ExtendAfterNavigator implements the core of the Appel-Jacobson
@@ -70,9 +65,6 @@ type eanItem struct {
 	wildcardInRack bool
 }
 
-// LeftPermutationNavigator finds all left parts of words that are
-// possible with a particular rack, and accumulates them by length.
-// This is done once at the start of move generation.
 type LeftPermutationNavigator struct {
 	rack      string
 	stack     []leftPermItem
@@ -81,8 +73,11 @@ type LeftPermutationNavigator struct {
 	index     int
 }
 
-// MatchNavigator stores the state for a pattern matching
-// navigation of a DAWG
+type leftPermItem struct {
+	rack  string
+	index int
+}
+
 type MatchNavigator struct {
 	pattern    []rune
 	lenP       int
@@ -99,7 +94,6 @@ type matchItem struct {
 	isWildcard bool
 }
 
-// FindNavigator stores the state for a plain word search in the DAWG
 type FindNavigator struct {
 	word    []rune
 	lenWord int
@@ -107,100 +101,83 @@ type FindNavigator struct {
 	found   bool
 }
 
-// Navigation contains the state of a single navigation that is
-// underway within a Dawg
 type Navigation struct {
-	dawg        *DAWG
+	DAWG        *DAWG
 	navigator   Navigator
 	isResumable bool
 }
 
-type leftPermItem struct {
-	rack  string
-	index int
-}
-
-// LeftPart stores the navigation state after matching a particular
-// left part within the DAWG, so we can resume navigation from that
-// point to complete an anchor square followed by a right part
 type LeftPart struct {
-	matched string
-	rack    string
-	state   *navState
+	matched  string
+	rack     string
+	navState *navState
 }
 
-// navState holds a navigation state, i.e. an edge where a prefix
-// leads to a nextNode
 type navState struct {
 	prefix   rune
 	nextNode *Node
 }
 
-// Init initializes a ExtendBeforeNavigator with the word to search for
-func (fbn *ExtendBeforeNavigator) Init(prefix []rune) {
-	fbn.prefix = prefix
-	fbn.lenPrefix = len(prefix)
+func (ebn *ExtendBeforeNavigator) Init(prefix []rune) {
+	ebn.prefix = prefix
+	ebn.lenPrefix = len(prefix)
 }
 
 // PushEdge determines whether the navigation should proceed into
-// an edge having chr as its first letter
-func (fbn *ExtendBeforeNavigator) PushEdge(chr rune) bool {
+// an edge having c as its first letter
+func (ebn *ExtendBeforeNavigator) PushEdge(c rune) bool {
 	// If the edge matches our place in the sought word, go for it
-	return fbn.prefix[fbn.index] == chr
+	return ebn.prefix[ebn.index] == c
 }
 
 // PopEdge returns false if there is no need to visit other edges
 // after this one has been traversed
-func (fbn *ExtendBeforeNavigator) PopEdge() bool {
+func (ebn *ExtendBeforeNavigator) PopEdge() bool {
 	// There can only be one correct outgoing edge for the
 	// Find function, so we return false to prevent other edges
 	// from being tried
 	return false
 }
 
-// Done is called when the navigation is complete
-func (fbn *ExtendBeforeNavigator) Done() {
-}
-
 // IsAccepting returns false if the navigator should not expect more
 // characters
-func (fbn *ExtendBeforeNavigator) IsAccepting() bool {
-	return fbn.index < fbn.lenPrefix
+func (ebn *ExtendBeforeNavigator) IsAccepting() bool {
+	return ebn.index < ebn.lenPrefix
 }
 
 // Accepts returns true if the navigator should accept and 'eat' the
 // given character
-func (fbn *ExtendBeforeNavigator) Accepts(chr rune) bool {
+func (ebn *ExtendBeforeNavigator) Accepts(c rune) bool {
 	// For the ExtendBeforeNavigator, we never enter an edge unless
 	// we have the correct character, so we simply advance
 	// the index and return true
-	fbn.index++
+	ebn.index++
 	return true
 }
 
 // Accept is called to inform the navigator of a match and
-// whether it is a final word
-func (fbn *ExtendBeforeNavigator) Accept(matched string, final bool, state *navState) {
-	if fbn.index == fbn.lenPrefix {
-		// Found the whole left part; save its position (state)
-		fbn.state = state
+// whether it is a isWord word
+func (ebn *ExtendBeforeNavigator) Accept(matched string, isWord bool, ns *navState) {
+	if ebn.index == ebn.lenPrefix {
+		// Found the whole left part; save its position navState
+		ebn.navState = ns
 	}
 }
 
 // Init initializes a fresh ExtendAfterNavigator for an axis, starting
 // from the given anchor, using the indicated rack
-func (ern *ExtendAfterNavigator) Init(axis *Axis, anchor int, rack string) {
-	ern.axis = axis
-	ern.anchor = anchor
-	ern.index = anchor
-	ern.rack = rack
-	ern.wildcardInRack = strings.ContainsRune(rack, '*')
-	ern.stack = make([]eanItem, 0, RackSize)
-	ern.moves = make([]Move, 0)
+func (ean *ExtendAfterNavigator) Init(axis *Axis, anchor int, rack string) {
+	ean.axis = axis
+	ean.anchor = anchor
+	ean.index = anchor
+	ean.rack = rack
+	ean.wildcardInRack = strings.ContainsRune(rack, '*')
+	ean.stack = make([]eanItem, 0, RackSize)
+	ean.moves = make([]Move, 0)
 }
 
-func (ern *ExtendAfterNavigator) check(letter rune) Match {
-	tileAtSq := ern.axis.squares[ern.index].Tile
+func (ean *ExtendAfterNavigator) check(letter rune) Match {
+	tileAtSq := ean.axis.squares[ean.index].Tile
 	if tileAtSq != nil {
 		// There is a tile in the square: must match it exactly
 		if letter == tileAtSq.Letter {
@@ -211,20 +188,20 @@ func (ern *ExtendAfterNavigator) check(letter rune) Match {
 		return MatchNo
 	}
 	// Does the current rack allow this letter?
-	if !ern.wildcardInRack && !strings.ContainsRune(ern.rack, letter) {
+	if !ean.wildcardInRack && !strings.ContainsRune(ean.rack, letter) {
 		// No, it doesn't
 		return MatchNo
 	}
 	// Finally, test the cross-checks
-	if ern.axis.Allows(ern.index, letter) {
+	if ean.axis.Allows(ean.index, letter) {
 		// The tile successfully completes any cross-words
 		/*
 			// DEBUG: verify that the cross-checks hold
-			sq := ern.axis.squares[ern.index]
-			left, right := ern.axis.state.Board.CrossWords(sq.Row, sq.Col, !ern.axis.horizontal)
+			sq := ean.axis.squares[ean.index]
+			left, right := ean.axis.state.Board.CrossWords(sq.Row, sq.Col, !ean.axis.horizontal)
 			if left != "" || right != "" {
 				word := left + string(letter) + right
-				if !ern.axis.state.Dawg.Find(word) {
+				if !ean.axis.state.Dawg.Find(word) {
 					panic("Cross-check violation!")
 				}
 			}
@@ -235,84 +212,80 @@ func (ern *ExtendAfterNavigator) check(letter rune) Match {
 }
 
 // PushEdge determines whether the navigation should proceed into
-// an edge having chr as its first letter
-func (ern *ExtendAfterNavigator) PushEdge(letter rune) bool {
-	ern.lastCheck = ern.check(letter)
-	if ern.lastCheck == MatchNo {
+// an edge having c as its first letter
+func (ean *ExtendAfterNavigator) PushEdge(letter rune) bool {
+	ean.lastCheck = ean.check(letter)
+	if ean.lastCheck == MatchNo {
 		// No way that this letter can be laid down here
 		return false
 	}
 	// Match: save our rack and our index and move into the edge
-	ern.stack = append(ern.stack, eanItem{ern.rack, ern.index, ern.wildcardInRack})
+	ean.stack = append(ean.stack, eanItem{ean.rack, ean.index, ean.wildcardInRack})
 	return true
 }
 
 // PopEdge returns false if there is no need to visit other edges
 // after this one has been traversed
-func (ern *ExtendAfterNavigator) PopEdge() bool {
+func (ean *ExtendAfterNavigator) PopEdge() bool {
 	// Pop the previous rack and index from the stack
-	last := len(ern.stack) - 1
-	sp := &ern.stack[last]
-	ern.rack, ern.index, ern.wildcardInRack = sp.rack, sp.index, sp.wildcardInRack
-	ern.stack = ern.stack[0:last]
+	last := len(ean.stack) - 1
+	sp := &ean.stack[last]
+	ean.rack, ean.index, ean.wildcardInRack = sp.rack, sp.index, sp.wildcardInRack
+	ean.stack = ean.stack[0:last]
 	// We need to visit all outgoing edges, so return true
 	return true
 }
 
-// Done is called when the navigation is complete
-func (ern *ExtendAfterNavigator) Done() {
-}
-
 // IsAccepting returns false if the navigator should not expect more
 // characters
-func (ern *ExtendAfterNavigator) IsAccepting() bool {
-	if ern.index >= BoardSize {
+func (ean *ExtendAfterNavigator) IsAccepting() bool {
+	if ean.index >= BoardSize {
 		// Gone off the board edge
 		return false
 	}
 	// Otherwise, continue while we have something on the rack
 	// or we're at an occupied square
-	return len(ern.rack) > 0 || ern.axis.squares[ern.index] != nil
+	return len(ean.rack) > 0 || ean.axis.squares[ean.index].Tile != nil
 }
 
 // Accepts returns true if the navigator should accept and 'eat' the
 // given character
-func (ern *ExtendAfterNavigator) Accepts(letter rune) bool {
+func (ean *ExtendAfterNavigator) Accepts(letter rune) bool {
 	// We are on the anchor square or to its right
-	match := ern.lastCheck
+	match := ean.lastCheck
 	if match == 0 {
 		// No cached check available from PushEdge
-		match = ern.check(letter)
+		match = ean.check(letter)
 	}
-	ern.lastCheck = 0
+	ean.lastCheck = 0
 	if match == MatchNo {
 		// No fit anymore: we're done with this edge
 		return false
 	}
 	// This letter is OK: accept it and remove from the rack if
 	// it came from there
-	ern.index++
+	ean.index++
 	if match == MacthRackTile {
-		if strings.ContainsRune(ern.rack, letter) {
+		if strings.ContainsRune(ean.rack, letter) {
 			// Used a normal tile
-			ern.rack = strings.Replace(ern.rack, string(letter), "", 1)
+			ean.rack = strings.Replace(ean.rack, string(letter), "", 1)
 		} else {
 			// Used a blank tile
-			ern.rack = strings.Replace(ern.rack, "*", "", 1)
+			ean.rack = strings.Replace(ean.rack, "*", "", 1)
 		}
-		ern.wildcardInRack = strings.ContainsRune(ern.rack, '*')
+		ean.wildcardInRack = strings.ContainsRune(ean.rack, '*')
 	}
 	return true
 }
 
 // Accept is called to inform the navigator of a match and
-// whether it is a final word
-func (ern *ExtendAfterNavigator) Accept(matched string, final bool, state *navState) {
-	if state != nil {
+// whether it is a isWord word
+func (ean *ExtendAfterNavigator) Accept(matched string, isWord bool, ns *navState) {
+	if ns != nil {
 		panic("ExtendAfterNavigator should not be resumable")
 	}
-	if !final ||
-		(ern.index < BoardSize && ern.axis.squares[ern.index].Tile != nil) {
+	if !isWord ||
+		(ean.index < BoardSize && ean.axis.squares[ean.index].Tile != nil) {
 		// Not a complete word, or ends on an occupied square:
 		// not a legal tile move
 		return
@@ -326,11 +299,11 @@ func (ern *ExtendAfterNavigator) Accept(matched string, final bool, state *navSt
 	// the move list
 	covers := make(Covers)
 	// Calculate the starting index within the axis
-	start := ern.index - len(runes)
+	start := ean.index - len(runes)
 	// The original rack
-	rack := ern.axis.rackString
+	rack := ean.axis.rackString
 	for i, l := range runes {
-		sq := ern.axis.squares[start+i]
+		sq := ean.axis.squares[start+i]
 		if sq.Tile == nil {
 			if strings.ContainsRune(rack, l) {
 				rack = strings.Replace(rack, string(l), "", 1)
@@ -343,8 +316,8 @@ func (ern *ExtendAfterNavigator) Accept(matched string, final bool, state *navSt
 		}
 	}
 	// No need to validate robot-generated tile moves
-	tileMove := NewUncheckedTileMove(ern.axis.state.Board, covers)
-	ern.moves = append(ern.moves, tileMove)
+	tileMove := NewUncheckedTileMove(ean.axis.state.Board, covers)
+	ean.moves = append(ean.moves, tileMove)
 }
 
 // Init initializes a fresh LeftPermutationNavigator using the given rack
@@ -391,11 +364,11 @@ func (lpn *LeftPermutationNavigator) Accepts(char rune) bool {
 }
 
 // Accept is called to inform the navigator of a match and
-// whether it is a final word
-func (lpn *LeftPermutationNavigator) Accept(matched string, final bool, state *navState) {
+// whether it is a isWord word
+func (lpn *LeftPermutationNavigator) Accept(matched string, isWord bool, ns *navState) {
 	ix := len([]rune(matched)) - 1
 	lpn.leftParts[ix] = append(lpn.leftParts[ix],
-		&LeftPart{matched: matched, rack: lpn.rack, state: state},
+		&LeftPart{matched: matched, rack: lpn.rack, navState: ns},
 	)
 }
 
@@ -417,10 +390,6 @@ func (lpn *LeftPermutationNavigator) PopEdge() bool {
 	return true
 }
 
-// Done is called when the navigation is complete
-func (lpn *LeftPermutationNavigator) Done() {
-}
-
 // Init initializes a MatchNavigator with the word to search for
 func (mn *MatchNavigator) Init(pattern string) {
 	// Convert the word to a list of runes
@@ -433,9 +402,9 @@ func (mn *MatchNavigator) Init(pattern string) {
 }
 
 // PushEdge determines whether the navigation should proceed into
-// an edge having chr as its first letter
-func (mn *MatchNavigator) PushEdge(chr rune) bool {
-	if chr != mn.chMatch && !mn.isWildcard {
+// an edge having c as its first letter
+func (mn *MatchNavigator) PushEdge(c rune) bool {
+	if c != mn.chMatch && !mn.isWildcard {
 		return false
 	}
 	mn.stack = append(mn.stack, matchItem{mn.index, mn.chMatch, mn.isWildcard})
@@ -452,10 +421,6 @@ func (mn *MatchNavigator) PopEdge() bool {
 	return mn.isWildcard
 }
 
-// Done is called when the navigation is complete
-func (mn *MatchNavigator) Done() {
-}
-
 // IsAccepting returns false if the navigator should not expect more
 // characters
 func (mn *MatchNavigator) IsAccepting() bool {
@@ -464,8 +429,8 @@ func (mn *MatchNavigator) IsAccepting() bool {
 
 // Accepts returns true if the navigator should accept and 'eat' the
 // given character
-func (mn *MatchNavigator) Accepts(chr rune) bool {
-	if chr != mn.chMatch && !mn.isWildcard {
+func (mn *MatchNavigator) Accepts(c rune) bool {
+	if c != mn.chMatch && !mn.isWildcard {
 		// Not a correct next character in the word
 		return false
 	}
@@ -479,9 +444,9 @@ func (mn *MatchNavigator) Accepts(chr rune) bool {
 }
 
 // Accept is called to inform the navigator of a match and
-// whether it is a final word
-func (mn *MatchNavigator) Accept(matched string, final bool, state *navState) {
-	if final && mn.index == mn.lenP {
+// whether it is a isWord word
+func (mn *MatchNavigator) Accept(matched string, isWord bool, ns *navState) {
+	if isWord && mn.index == mn.lenP {
 		// Entire pattern match
 		mn.results = append(mn.results, matched)
 	}
@@ -494,10 +459,10 @@ func (fn *FindNavigator) Init(word string) {
 }
 
 // PushEdge determines whether the navigation should proceed into
-// an edge having chr as its first letter
-func (fn *FindNavigator) PushEdge(chr rune) bool {
+// an edge having c as its first letter
+func (fn *FindNavigator) PushEdge(c rune) bool {
 	// If the edge matches our place in the sought word, go for it
-	return fn.word[fn.index] == chr
+	return fn.word[fn.index] == c
 }
 
 // PopEdge returns false if there is no need to visit other edges
@@ -509,10 +474,6 @@ func (fn *FindNavigator) PopEdge() bool {
 	return false
 }
 
-// Done is called when the navigation is complete
-func (fn *FindNavigator) Done() {
-}
-
 // IsAccepting returns false if the navigator should not expect more
 // characters
 func (fn *FindNavigator) IsAccepting() bool {
@@ -521,7 +482,7 @@ func (fn *FindNavigator) IsAccepting() bool {
 
 // Accepts returns true if the navigator should accept and 'eat' the
 // given character
-func (fn *FindNavigator) Accepts(chr rune) bool {
+func (fn *FindNavigator) Accepts(c rune) bool {
 	// For the FindNavigator, we never enter an edge unless
 	// we have the correct character, so we simply advance
 	// the index and return true
@@ -530,10 +491,10 @@ func (fn *FindNavigator) Accepts(chr rune) bool {
 }
 
 // Accept is called to inform the navigator of a match and
-// whether it is a final word
-func (fn *FindNavigator) Accept(matched string, final bool, state *navState) {
-	if final && fn.index == fn.lenWord {
-		// This is a whole word (final=true) and matches our
+// whether it is a isWord word
+func (fn *FindNavigator) Accept(matched string, isWord bool, ns *navState) {
+	if isWord && fn.index == fn.lenWord {
+		// This is a whole word (isWord=true) and matches our
 		// length, so that's it
 		fn.found = true
 	}
@@ -541,26 +502,24 @@ func (fn *FindNavigator) Accept(matched string, final bool, state *navState) {
 
 // Go starts a navigation on the underlying Dawg using the given
 // Navigator
-func (nav *Navigation) Go(dawg *DAWG, navigator Navigator) {
-	nav.dawg = dawg
+func (nav *Navigation) Go(d *DAWG, navigator Navigator) {
+	nav.DAWG = d
 	nav.navigator = navigator
 	if navigator.IsAccepting() {
-		// Leave our home harbor and set sail for the open seas
-		nav.FromNode(dawg.Root, "")
+		nav.FromNode(d.Root, "")
 	}
-	navigator.Done()
 }
 
 // FromNode continues a navigation from a node in the Dawg,
 // enumerating through outgoing edges until the navigator is
 // satisfied
 func (nav *Navigation) FromNode(n *Node, matched string) {
-	iter := nav.dawg.iterNodeCache.iterNode(n)
+	iter := nav.DAWG.iterNodeCache.iterNode(n)
 	for i := 0; i < len(iter); i++ {
-		state := &iter[i]
-		if nav.navigator.PushEdge(state.prefix) {
+		ns := &iter[i]
+		if nav.navigator.PushEdge(ns.prefix) {
 			// The navigator wants us to enter this edge
-			nav.FromEdge(state, matched)
+			nav.FromEdge(ns, matched)
 			if !nav.navigator.PopEdge() {
 				// The navigator doesn't want to visit
 				// other edges, so we're done with this node
@@ -573,62 +532,50 @@ func (nav *Navigation) FromNode(n *Node, matched string) {
 // FromEdge navigates along an edge in the Dawg. An edge
 // consists of a prefix string, which may be longer than
 // one letter.
-func (nav *Navigation) FromEdge(state *navState, matched string) {
-	if state.prefix == NoPrefix {
+func (nav *Navigation) FromEdge(ns *navState, matched string) {
+	if ns.prefix == NoPrefix {
 		return
 	}
 	navigator := nav.navigator
-	if !navigator.Accepts(state.prefix) {
-		// The navigator doesn't want this prefix letter:
-		// we're done
+	if !navigator.Accepts(ns.prefix) {
 		return
 	}
 	// The navigator wants this prefix letter:
 	// add it to the matched prefix and find out whether
-	// it is now in a final state (i.e. an entire valid word)
-	matched += string(state.prefix)
-	final := false
-	if state.nextNode == nil || state.nextNode.IsWord {
-		final = true
+	// it is now an entire valid word
+	matched += string(ns.prefix)
+	isWord := false
+	if ns.nextNode == nil || ns.nextNode.IsWord {
+		isWord = true
 	}
 	// Notify the navigator of the match
 	if nav.isResumable {
 		// We want the full navigation state to be passed to navigator.Accept()
 		navigator.Accept(
 			matched,
-			final,
+			isWord,
 			// Create a navState that would resume the navigation at our
 			// current location within the prefix, with the same nextNode
-			&navState{prefix: state.prefix, nextNode: state.nextNode},
+			&navState{prefix: ns.prefix, nextNode: ns.nextNode},
 		)
 	} else {
 		// No need to pass the full state
-		navigator.Accept(matched, final, nil)
+		navigator.Accept(matched, isWord, nil)
 	}
-	if state.nextNode != nil && navigator.IsAccepting() {
+	if ns.nextNode != nil && navigator.IsAccepting() {
 		// Completed a whole prefix and still the navigator
 		// has appetite: continue to the following node
-		nav.FromNode(state.nextNode, matched)
+		nav.FromNode(ns.nextNode, matched)
 	}
 }
 
 // Resume continues a navigation on the underlying Dawg
 // using the given Navigator, from a previously saved navigation
 // state
-func (nav *Navigation) Resume(dawg *DAWG, navigator Navigator, state *navState, matched string) {
-	nav.dawg = dawg
+func (nav *Navigation) Resume(d *DAWG, navigator Navigator, ns *navState, matched string) {
+	nav.DAWG = d
 	nav.navigator = navigator
 	if navigator.IsAccepting() {
-		nav.FromEdge(state, matched)
+		nav.FromEdge(ns, matched)
 	}
-	navigator.Done()
-}
-
-// FindLeftParts returns all left part permutations that can be generated
-// from the given rack, grouped by length
-func FindLeftParts(dawg *DAWG, rack string) [][]*LeftPart {
-	var lpn LeftPermutationNavigator
-	lpn.Init(rack)
-	dawg.NavigateResumable(&lpn)
-	return lpn.leftParts
 }
